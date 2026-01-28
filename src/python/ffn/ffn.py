@@ -17,11 +17,25 @@ class FFNModel(nn.Module):
                     nn.Linear(ffn_dim, dim),
                 )
             )
+        self.layer_norm = nn.LayerNorm(dim, eps=1e-6, elementwise_affine=False)
 
     @cuda_bench.test_time_cuda(enable=True, contain_cpu=True, contain_cuda=True)
-    def forward(self, x):
+    def forward(self, x, ffn_x, e):
+        '''
+            x : [b, s, d]
+            e[i] : [6, 1, d]
+            y = self.ffn(
+                self.norm2(x + ffn_x).float() * (1 + e[4].squeeze(2)) + e[3].squeeze(2))
+            with torch.amp.autocast('cuda', dtype=torch.float32):
+                x = x + y * e[5].squeeze(2)
+        '''
         for layer in self.layers:
+            x = x + ffn_x
+            x = self.layer_norm(x)
+            x = x.float() * (1 + e[4]) + e[3]
             x = layer(x)
+            x = x + x * e[5]
+
         return x
 
     def __ckp_map__(self) -> dict:
@@ -44,7 +58,7 @@ class FFNModel(nn.Module):
         return super().load_state_dict(new_state_dict, strict=strict)
 
 
-if __name__ == "__main__":
+def generate():
     torch.set_grad_enabled(False)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -59,7 +73,14 @@ if __name__ == "__main__":
     baseline.eval().to(device)
 
     x = torch.randn(1, 128, 5120, device=device)
-    output = baseline(x)
+    ffn_x = torch.randn(1, 128, 5120, device=device)
+    e = torch.randn(6, 1, 5120, device=device)
+    output = baseline(x, ffn_x, e)
 
     print("output: ", output.shape)
+
+
+if __name__ == "__main__":
+    generate()
+
 
