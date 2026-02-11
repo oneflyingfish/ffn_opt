@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from utils_inference.bench import cuda_bench
 import time
+from torch import Tensor
 
 
 class FFNModel(nn.Module):
@@ -20,15 +21,15 @@ class FFNModel(nn.Module):
         self.layer_norm = nn.LayerNorm(dim, eps=1e-6, elementwise_affine=False)
 
     @cuda_bench.test_time_cuda(enable=True, contain_cpu=True, contain_cuda=True)
-    def forward(self, x, ffn_x, e):
-        '''
-            x : [b, s, d]
-            e[i] : [6, 1, d]
-            y = self.ffn(
-                self.norm2(x + ffn_x).float() * (1 + e[4].squeeze(2)) + e[3].squeeze(2))
-            with torch.amp.autocast('cuda', dtype=torch.float32):
-                x = x + y * e[5].squeeze(2)
-        '''
+    def forward(self, x, ffn_x, e) -> Tensor:
+        """
+        x : [b, s, d]
+        e[i] : [6, 1, d]
+        y = self.ffn(
+            self.norm2(x + ffn_x).float() * (1 + e[4].squeeze(2)) + e[3].squeeze(2))
+        with torch.amp.autocast('cuda', dtype=torch.float32):
+            x = x + y * e[5].squeeze(2)
+        """
         for layer in self.layers:
             x = x + ffn_x
             x = self.layer_norm(x)
@@ -82,5 +83,3 @@ def generate():
 
 if __name__ == "__main__":
     generate()
-
-
